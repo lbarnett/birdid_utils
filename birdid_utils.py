@@ -27,6 +27,8 @@ MULTIPROCESSING = False
 
 class Configuration(object):
     def __init__(self, identifier='', prefix=''):
+        self.identifier = identifier
+        self.prefix = prefix
         # Path to image folder
         #self.inputDir = '../../../datasets/Caltech/101_ObjectCategories'
         #self.inputDir = '../../../data/101_ObjectCategories'
@@ -54,7 +56,8 @@ class Configuration(object):
         self.svm = SVMParameters(C=10)
 
         # These dsift sizes are the best for the all species tests 
-        self.phowOpts = PHOWOptions(Verbose=False, Sizes=[4, 5, 6, 7, 8, 9], Step=3)
+        self.phowOpts = PHOWOptions(Verbose=False, Sizes=[4, 5, 6, 7, 8, 9], 
+            Step=3)
         self.clobber = False
         self.tinyProblem = TINYPROBLEM
         self.prefix = prefix
@@ -63,11 +66,8 @@ class Configuration(object):
         self.extensions = [".jpg", ".jpeg", ".bmp", ".png", ".pgm", ".tif", ".tiff"]
         self.images_for_histogram = 30
         self.numbers_of_features_for_histogram = 100000
-        
-        self.vocabPath = join(self.dataDir, identifier + '-vocab.py.mat')
-        self.histPath = join(self.dataDir, identifier + '-hists.py.mat')
-        self.modelPath = join(self.dataDir, self.prefix + '-' + identifier + '-model.py.mat')
-        self.resultPath = join(self.dataDir, self.prefix + '-' + identifier + '-result')
+
+        generate_result_paths(self)
         
         if self.tinyProblem:
             print "Using 'tiny' protocol with different parameters than the .m code"
@@ -91,6 +91,12 @@ class Configuration(object):
             message = "(self.numSpatialX != self.numSpatialY), because {0} != {1}".format(*messageformat)
             raise ValueError(message)
 
+def generate_result_paths(conf):
+    conf.vocabPath = join(conf.dataDir, conf.identifier + '-vocab.py.mat')
+    conf.histPath = join(conf.dataDir, conf.identifier + '-hists.py.mat')
+    conf.modelPath = join(conf.dataDir, conf.prefix + '-' + conf.identifier + '-model.py.mat')
+    conf.resultPath = join(conf.dataDir, conf.prefix + '-' + conf.identifier + '-result')
+        
 
 def ensure_type_array(data):
     if (type(data) is not ndarray):
@@ -222,9 +228,16 @@ def get_all_images(classes, conf):
         imgs = get_imgfiles(path, extensions)
         if len(imgs) == 0:
             raise ValueError('no images for class ' + str(imageclass))
-        imgs = sample(imgs, conf.imagesperclass)
+
+        if conf.numTrain > 0:
+            imgs = sample(imgs, conf.imagesperclass)
         all_images = all_images + imgs
-        class_labels = list(i * ones(conf.imagesperclass))
+
+        if conf.numTrain > 0:
+            class_labels = list(i * ones(conf.imagesperclass))
+        else:
+            class_labels = list(i * ones(len(imgs)))
+
         all_images_class_labels = all_images_class_labels + class_labels
 
     all_images_class_labels = array(all_images_class_labels, 'int')
@@ -238,6 +251,13 @@ def create_split(all_images, conf):
     # the '[0]' is there, because 'where' returns tuples, don't know why....
     # the use of the 'temp' variable is not pythonic, but we need the indices 
     # not a boolean array. See Matlab code
+    return selTrain, selTest
+
+def create_split_n(all_images, imgsPerClass, numTrain):
+    temp = mod(arange(len(all_images)), imgsPerClass) < numTrain
+    selTrain = where(temp == True)[0]
+    selTest = where(temp == False)[0]
+
     return selTrain, selTest
 
 
