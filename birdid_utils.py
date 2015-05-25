@@ -29,10 +29,6 @@ class Configuration(object):
     def __init__(self, identifier='', prefix=''):
         self.identifier = identifier
         self.prefix = prefix
-        # Path to image folder
-        #self.inputDir = '../../../datasets/Caltech/101_ObjectCategories'
-        #self.inputDir = '../../../data/101_ObjectCategories'
-        #self.inputDir = '../../../data/2014_winter/256x256/vlfeat_training_jpg'
         self.inputDir = '../../../data/2014/res_med/vlfeat_training_jpg'
 
         # Path where training data will be stored
@@ -48,7 +44,7 @@ class Configuration(object):
         self.numTest = 15
         
         self.imagesperclass = self.numTrain + self.numTest
-        self.numClasses = 7
+        self.numClasses = 9
         self.numWords = 600
         self.numSpatialX = [2, 4]
         self.numSpatialY = [2, 4]
@@ -56,7 +52,7 @@ class Configuration(object):
         self.svm = SVMParameters(C=10)
 
         # These dsift sizes are the best for the all species tests 
-        self.phowOpts = PHOWOptions(Verbose=False, Sizes=[4, 5, 6, 7, 8, 9], 
+        self.phowOpts = PHOWOptions(Verbose=False, Sizes=[2,4,6,8],
             Step=3)
         self.clobber = False
         self.tinyProblem = TINYPROBLEM
@@ -90,6 +86,9 @@ class Configuration(object):
             messageformat = [str(self.numSpatialX), str(self.numSpatialY)]
             message = "(self.numSpatialX != self.numSpatialY), because {0} != {1}".format(*messageformat)
             raise ValueError(message)
+				
+	def setClasses(self, classes):
+		self.classes = classes
 
 def generate_result_paths(conf):
     conf.vocabPath = join(conf.dataDir, conf.identifier + '-vocab.py.mat')
