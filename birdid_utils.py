@@ -107,7 +107,7 @@ def ensure_type_array(data):
 
 
 def standardizeImage(im):
-    im = array(im, 'float32') 
+    im = array(im, 'float32')
     if im.shape[0] > 480:
         resize_factor = 480.0 / im.shape[0]  # don't remove trailing .0 to avoid integer devision
         im = imresize(im, resize_factor)
@@ -126,45 +126,41 @@ def getPhowFeatures(imagedata, phowOpts):
                              step=phowOpts.Step)
     return frames, descrs
 
-
 def getImageDescriptor(model, im, conf):
-    im = standardizeImage(im)
-    height, width = im.shape[:2]
-    numWords = model.vocab.shape[1]
-
-    frames, descrs = getPhowFeatures(im, conf.phowOpts)
-    # quantize appearance
-    if model.quantizer == 'vq':
-        binsa, _ = vq(descrs.T, model.vocab.T)
-    elif model.quantizer == 'kdtree':
-        raise ValueError('quantizer kdtree not implemented')
-    else:
-        raise ValueError('quantizer {0} not known or understood'.format(model.quantizer))
-
-    hist = []
-    for n_spatial_bins_x, n_spatial_bins_y in zip(model.numSpatialX, model.numSpatialX):
-        binsx, distsx = vq(frames[0, :], linspace(0, width, n_spatial_bins_x))
-        binsy, distsy = vq(frames[1, :], linspace(0, height, n_spatial_bins_y))
-        # binsx and binsy list to what spatial bin each feature point belongs to
-        if (numpy.any(distsx < 0)) | (numpy.any(distsx > (width/n_spatial_bins_x+0.5))):
-            print 'something went wrong'
-            import pdb; pdb.set_trace()
-        if (numpy.any(distsy < 0)) | (numpy.any(distsy > (height/n_spatial_bins_y+0.5))):
-            print 'something went wrong'
-            import pdb; pdb.set_trace()
-
-        # combined quantization
-        number_of_bins = n_spatial_bins_x * n_spatial_bins_y * numWords
-        temp = arange(number_of_bins)
-        # update using this: http://stackoverflow.com/questions/15230179/how-to-get-the-linear-index-for-a-numpy-array-sub2ind
-        temp = temp.reshape([n_spatial_bins_x, n_spatial_bins_y, numWords])
-        bin_comb = temp[binsx, binsy, binsa]
-        hist_temp, _ = histogram(bin_comb, bins=range(number_of_bins+1), density=True)
-        hist.append(hist_temp)
-
-    hist = hstack(hist)
-    hist = array(hist, 'float32') / sum(hist)
-    return hist
+	im = standardizeImage(im)
+	height, width = im.shape[:2]
+	numWords = model.vocab.shape[1]
+	frames, descrs = getPhowFeatures(im, conf.phowOpts)
+	# quantize appearance
+	if model.quantizer == 'vq':
+		binsa, _ = vq(descrs.T, model.vocab.T)
+	elif model.quantizer == 'kdtree':
+		raise ValueError('quantizer kdtree not implemented')
+	else:
+		raise ValueError('quantizer {0} not known or understood'.format(model.quantizer))
+	hist = []
+	for n_spatial_bins_x, n_spatial_bins_y in zip(model.numSpatialX, model.numSpatialX):
+		binsx, distsx = vq(frames[0, :], linspace(0, width, n_spatial_bins_x))
+		binsy, distsy = vq(frames[1, :], linspace(0, height, n_spatial_bins_y))
+		# binsx and binsy list to what spatial bin each feature point belongs to
+		if (numpy.any(distsx < 0)) | (numpy.any(distsx > (width/n_spatial_bins_x+0.5))):
+			print ("something went wrong")
+			import pdb; pdb.set_trace()
+		if (numpy.any(distsy < 0)) | (numpy.any(distsy > (height/n_spatial_bins_y+0.5))):
+			print ("something went wrong")
+			import pdb; pdb.set_trace()
+		# combined quantization
+		number_of_bins = n_spatial_bins_x * n_spatial_bins_y * numWords
+		temp = arange(number_of_bins)
+		# update using this: http://stackoverflow.com/questions/15230179/how-to-get-the-linear-index-for-a-numpy-array-sub2ind
+		temp = temp.reshape([n_spatial_bins_x, n_spatial_bins_y, numWords])
+		bin_comb = temp[binsx, binsy, binsa]
+		hist_temp, _ = histogram(bin_comb, bins=range(number_of_bins+1), density=True)
+		hist.append(hist_temp)
+	
+	hist = hstack(hist)
+	hist = array(hist, 'float32') / sum(hist)
+	return hist
 
 
 class Model(object):
@@ -259,44 +255,12 @@ def create_split_n(all_images, imgsPerClass, numTrain):
 
     return selTrain, selTest
 
-
-def trainVocab(selTrain, all_images, conf):
-    selTrainFeats = sample(selTrain, conf.images_for_histogram)
-    descrs = []
-    if MULTIPROCESSING:
-        raise ValueError('MULTIPROCESSING not implemented')
-        #pool = Pool(processes=30)  
-        #list_of_train_images = [all_images[i] for i in selTrainFeats]
-        #descrs.append(pool.map_async(getPhowFeatures, list_of_train_images).get())        
-    else:
-        for i in selTrainFeats:
-            im = imread(all_images[i])
-            # Debugging
-            #print all_images[i], 'shape', im.shape
-            descrs.append(getPhowFeatures(im, conf.phowOpts)[1])
-            # the '[1]' is there because we only want the descriptors and not the frames
-    
-    descrs = hstack(descrs)
-    n_features = descrs.shape[1]
-    sample_indices = sample(arange(n_features), conf.numbers_of_features_for_histogram)
-    descrs = descrs[:, sample_indices]
-    descrs = array(descrs, 'uint8')
-    
-    # Quantize the descriptors to get the visual words
-    vocab, _ = vl_ikmeans(descrs,
-                          K=conf.numWords,
-                          verbose=conf.verbose,
-                          method='elkan')
-    return vocab
-
-
 def computeHistograms(all_images, model, conf):
-    hists = []
-    for ii, imagefname in enumerate(all_images):
-        #print('Processing {0} ({1:.2f}%)'.format(imagefname, 100.0 * ii / len(all_images)))
-        im = imread(imagefname)
-        hists_temp = getImageDescriptor(model, im, conf)
-        hists.append(hists_temp)
-    hists = vstack(hists)
-    return hists
+	hists = []
+	for ii, imagefname in enumerate(all_images):
+		im = imread(imagefname)
+		hists_temp = getImageDescriptor(model, im, conf)
+		hists.append(hists_temp)
+	hists = vstack(hists)
+	return hists
 
