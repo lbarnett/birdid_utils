@@ -162,6 +162,25 @@ def getImageDescriptor(model, im, conf):
 	hist = array(hist, 'float32') / sum(hist)
 	return hist
 
+def trainVocab(selTrain, all_images, conf):
+    selTrainFeats = sample(selTrain, conf.images_for_histogram)
+	for i in selTrainFeats:
+		im = imread(all_images[i])
+		descrs.append(getPhowFeatures(im, conf.phowOpts)[1])
+	# the '[1]' is there because we only want the descriptors and not the frames
+    
+    descrs = hstack(descrs)
+    n_features = descrs.shape[1]
+    sample_indices = sample(arange(n_features), conf.numbers_of_features_for_histogram)
+    descrs = descrs[:, sample_indices]
+    descrs = array(descrs, 'uint8')
+    
+    # Quantize the descriptors to get the visual words
+    vocab, _ = vl_ikmeans(descrs,
+                          K=conf.numWords,
+                          verbose=conf.verbose,
+                          method='elkan')
+    return vocab
 
 class Model(object):
     def __init__(self, classes, conf, vocab=None):
