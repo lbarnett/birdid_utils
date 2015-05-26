@@ -17,6 +17,7 @@ from vlfeat import vl_ikmeans
 import pylab as pl
 from datetime import datetime
 import multiprocessing
+import sys
 
 
 SAVETODISC = False
