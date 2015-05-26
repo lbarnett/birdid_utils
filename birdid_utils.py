@@ -16,6 +16,7 @@ from vl_phow import vl_phow
 from vlfeat import vl_ikmeans
 import pylab as pl
 from datetime import datetime
+import multiprocessing
 
 
 SAVETODISC = False
@@ -42,7 +43,7 @@ class Configuration(object):
         # class
         self.numTrain = 30
         self.numTest = 15
-        
+        self.numCore = multiprocessing.cpu_count()
         self.imagesperclass = self.numTrain + self.numTest
         self.numClasses = 9
         self.numWords = 600
@@ -161,6 +162,46 @@ def getImageDescriptor(model, im, conf):
 	hist = hstack(hist)
 	hist = array(hist, 'float32') / sum(hist)
 	return hist
+
+def getImageDescriptorMulti(model, im, idx): #gets histograms
+	im = standardizeImage(im) #scale image to 640x480
+	height, width = im.shape[:2]
+	numWords = model.vocab.shape[1]
+	frames, descrs = getPhowFeatures(im, conf.phowOpts) #extract features
+	# quantize appearance
+	if model.quantizer == 'vq':
+		binsa, _ = vq(descrs.T, model.vocab.T) #slowest function - does kmeans clustering
+	elif model.quantizer == 'kdtree':
+		raise ValueError('quantizer kdtree not implemented')
+	else:
+		raise ValueError('quantizer {0} not known or understood'.format(model.quantizer))
+	hist = []
+	#generate the histogram bins
+	for n_spatial_bins_x, n_spatial_bins_y in zip(model.numSpatialX, model.numSpatialX):
+		binsx, distsx = vq(frames[0, :], linspace(0, width, n_spatial_bins_x))
+		binsy, distsy = vq(frames[1, :], linspace(0, height, n_spatial_bins_y))
+		# binsx and binsy list to what spatial bin each feature point belongs to
+		if (numpy.any(distsx < 0)) | (numpy.any(distsx > (width/n_spatial_bins_x+0.5))):
+			print ("something went wrong")
+			import pdb; pdb.set_trace()
+		if (numpy.any(distsy < 0)) | (numpy.any(distsy > (height/n_spatial_bins_y+0.5))):
+			print ("something went wrong")
+			import pdb; pdb.set_trace()
+		# combined quantization
+		number_of_bins = n_spatial_bins_x * n_spatial_bins_y * numWords
+		temp = arange(number_of_bins)
+		# update using this: http://stackoverflow.com/questions/15230179/how-to-get-the-linear-index-for-a-numpy-array-sub2ind
+		temp = temp.reshape([n_spatial_bins_x, n_spatial_bins_y, numWords])
+		bin_comb = temp[binsx, binsy, binsa]
+		hist_temp, _ = histogram(bin_comb, bins=range(number_of_bins+1), density=True) #generate histogram
+		hist.append(hist_temp)
+	
+	hist = hstack(hist)
+	hist = array(hist, 'float32') / sum(hist)
+	numTot = float(conf.numClasses*(conf.numTrain+conf.numTest))
+	sys.stdout.write ("\r"+str(datetime.now())+" Histograms Calculated: "+str(((idx+1)/numTot)*100.0)[:5]+"%") #make progress percentage
+	sys.stdout.flush()
+	return [idx, hist]
 
 def trainVocab(selTrain, all_images, conf):
 	selTrainFeats = sample(selTrain, conf.images_for_histogram)
@@ -282,4 +323,18 @@ def computeHistograms(all_images, model, conf):
 		hists_temp = getImageDescriptor(model, im, conf)
 		hists.append(hists_temp)
 	hists = vstack(hists)
+	return hists
+
+def computeHistogramsMulti(all_images, model, conf):
+	hists = []
+	#start multiprocessing block
+	pool = multiprocessing.Pool(processes=conf.numCore)
+	results = [pool.apply_async(getImageDescriptorMulti, args=(model, imread(imagefname), ii)) for ii, imagefname in enumerate(all_images)]
+	hists = [p.get() for p in results]
+	sorted(hists)
+	for hist in hists:
+		hist.pop(0)
+	#end multiprocessing block
+	hists = vstack(hists)
+	print "" #puts in a new line to separate histogram percentage
 	return hists
