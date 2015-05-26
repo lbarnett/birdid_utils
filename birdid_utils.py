@@ -163,7 +163,7 @@ def getImageDescriptor(model, im, conf):
 	hist = array(hist, 'float32') / sum(hist)
 	return hist
 
-def getImageDescriptorMulti(model, im, idx): #gets histograms
+def getImageDescriptorMulti(model, im, idx, conf): #gets histograms
 	im = standardizeImage(im) #scale image to 640x480
 	height, width = im.shape[:2]
 	numWords = model.vocab.shape[1]
@@ -329,7 +329,7 @@ def computeHistogramsMulti(all_images, model, conf):
 	hists = []
 	#start multiprocessing block
 	pool = multiprocessing.Pool(processes=conf.numCore)
-	results = [pool.apply_async(getImageDescriptorMulti, args=(model, imread(imagefname), ii)) for ii, imagefname in enumerate(all_images)]
+	results = [pool.apply_async(getImageDescriptorMulti, args=(model, imread(imagefname), ii, conf)) for ii, imagefname in enumerate(all_images)]
 	hists = [p.get() for p in results]
 	sorted(hists)
 	for hist in hists:
